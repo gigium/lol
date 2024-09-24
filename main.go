@@ -46,9 +46,11 @@ const (
 
 func main() {
 	var configFile string
+	var yamlOutput bool
 	var jsonOutput bool
 	var maxTokens int
-	flag.StringVar(&configFile, "config", filepath.Join(os.Getenv("HOME"), ".lolconfig.yaml"), "Path to config file")
+	flag.StringVar(&configFile, "config", filepath.Join(os.Getenv("HOME"), ".lqyconfig.yaml"), "Path to config file")
+	flag.BoolVar(&yamlOutput, "oyaml", false, "Request YAML-structured output from the LLM")
 	flag.BoolVar(&jsonOutput, "ojson", false, "Request JSON-structured output from the LLM")
 	flag.IntVar(&maxTokens, "max-tokens", maxInputTokens, "Maximum number of tokens to use for input")
 	flag.Parse()
@@ -80,16 +82,26 @@ func main() {
 	} else if argInput != "" {
 		input = argInput
 	} else {
-		fmt.Println("Usage: lol [--config <filepath>] [-ojson] [--max-tokens <number>] <input>")
-		fmt.Println("   or: <command> | lol [-ojson] [--max-tokens <number>] <question>")
+		fmt.Println("Usage: lqy [--config <filepath>] [-ojson|-oyaml] [--max-tokens <number>] <input>")
+		fmt.Println("   or: <command> | lqy [-ojson|-oyaml] [--max-tokens <number>] <question>")
 		os.Exit(1)
 	}
 
 	// Append JSON instruction if -ojson flag is set
-	if jsonOutput {
+	if jsonOutput && !yamlOutput {
 		jsonInstruction := "\n\nPlease structure your entire response as a JSON object. If the user query doesn't specify a particular structure, create an appropriate JSON structure for the response content."
 		input += jsonInstruction
 	}
+
+	if yamlOutput && !jsonOutput {
+		yamlInstruction := "\n\nPlease structure your entire response as a YAML manifest. If the user query doesn't specify a particular structure, create an appropriate YAML structure for the response content."
+		input += yamlInstruction
+	}
+
+  if yamlOutput && jsonOutput {
+    fmt.Println("You can only specify json or yaml output")
+    os.Exit(1)
+  }
 
 	// Truncate input if it exceeds the token limit
 	input = truncateInput(input, maxTokens)
