@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v2"
 )
@@ -39,9 +40,17 @@ type OpenAIResponse struct {
 	} `json:"choices"`
 }
 
+const (
+	maxInputTokens = 8000 // Conservative estimate, actual limit might be higher
+)
+
 func main() {
 	var configFile string
+	var jsonOutput bool
+	var maxTokens int
 	flag.StringVar(&configFile, "config", filepath.Join(os.Getenv("HOME"), ".lolconfig.yaml"), "Path to config file")
+	flag.BoolVar(&jsonOutput, "ojson", false, "Request JSON-structured output from the LLM")
+	flag.IntVar(&maxTokens, "max-tokens", maxInputTokens, "Maximum number of tokens to use for input")
 	flag.Parse()
 
 	config, err := loadConfig(configFile)
@@ -71,10 +80,19 @@ func main() {
 	} else if argInput != "" {
 		input = argInput
 	} else {
-		fmt.Println("Usage: lol [--config <filepath>] <input>")
-		fmt.Println("   or: <command> | lol <question>")
+		fmt.Println("Usage: lol [--config <filepath>] [-ojson] [--max-tokens <number>] <input>")
+		fmt.Println("   or: <command> | lol [-ojson] [--max-tokens <number>] <question>")
 		os.Exit(1)
 	}
+
+	// Append JSON instruction if -ojson flag is set
+	if jsonOutput {
+		jsonInstruction := "\n\nPlease structure your entire response as a JSON object. If the user query doesn't specify a particular structure, create an appropriate JSON structure for the response content."
+		input += jsonInstruction
+	}
+
+	// Truncate input if it exceeds the token limit
+	input = truncateInput(input, maxTokens)
 
 	response, err := generateLLMResponse(config, input)
 	if err != nil {
@@ -154,4 +172,17 @@ func generateLLMResponse(config *Config, input string) (string, error) {
 	}
 
 	return openAIResp.Choices[0].Message.Content, nil
+}
+
+func truncateInput(input string, maxTokens int) string {
+	// This is a very rough approximation. In reality, tokenization is more complex.
+	// We're using 4 characters as an approximate average token length.
+	maxChars := maxTokens * 4
+
+	if utf8.RuneCountInString(input) <= maxChars {
+		return input
+	}
+
+	truncated := []rune(input)[:maxChars]
+	return string(truncated) + "\n...(input truncated due to length)"
 }
